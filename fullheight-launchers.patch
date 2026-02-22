@@ -1,6 +1,6 @@
 --- a/qml/Task.qml
 +++ b/qml/Task.qml
-@@ -28,6 +28,14 @@
+@@ -28,6 +28,23 @@
      // so un-rotate them here to fix that.
      rotation: Plasmoid.configuration.reverseMode && Plasmoid.formFactor === PlasmaCore.Types.Vertical ? 180 : 0
  
@@ -12,10 +12,19 @@
 +    readonly property bool isFullHeightLauncher: !inPopup && !tasksRoot.vertical
 +                                                 && !tasksRoot.iconsOnly && model.IsLauncher
 +
++    // Icon render size for full-height launchers: 80% of the panel height.
++    readonly property real launcherIconSize: Math.round(tasksRoot.height * 0.8)
++    // Button (cell) width is slightly narrower than the icon size to reduce the
++    // horizontal gap between adjacent launcher buttons. Subtracting half the
++    // frame's horizontal margins pulls the buttons closer together while keeping
++    // the icon itself at full launcherIconSize.
++    readonly property real launcherButtonWidth: Math.round(launcherIconSize
++        - TaskManagerApplet.LayoutMetrics.horizontalMargins() / 2)
++
      implicitHeight: inPopup
                      ? TaskManagerApplet.LayoutMetrics.preferredHeightInPopup()
                      : (tasksRoot.vertical
-@@ -38,12 +46,38 @@
+@@ -38,12 +55,45 @@
          ? Math.max(TaskManagerApplet.LayoutMetrics.preferredMinWidth(), Math.min(TaskManagerApplet.LayoutMetrics.preferredMaxWidth(), tasksRoot.width / Plasmoid.configuration.maxStripes))
          : 0
  
@@ -23,13 +32,20 @@
 +    // Full-height launchers are fixed-width squares; regular tasks fill available width.
 +    Layout.fillWidth: !isFullHeightLauncher
      Layout.fillHeight: !inPopup
++    // Add a left margin to tasks in the first task column to create a visual gap
++    // between the launcher group and the task bars. With TopToBottom flow the first
++    // task column contains the stripeCount items immediately after the launchers.
++    Layout.leftMargin: (!inPopup && !tasksRoot.vertical && !isFullHeightLauncher
++        && taskList.fullHeightLauncherCount > 0
++        && (index - taskList.fullHeightLauncherCount) < taskList.stripeCount
++        && (index - taskList.fullHeightLauncherCount) >= 0) ? 4 : 0
 +    // Launchers span all rows and are given the full panel height explicitly.
 +    // Span all actual stripes. Use stripeCount (not rows, which starts at 0)
 +    // and fall back to maxStripes before stripeCount resolves.
 +    Layout.rowSpan: isFullHeightLauncher
 +        ? Math.max(1, taskList.stripeCount > 0 ? taskList.stripeCount : Plasmoid.configuration.maxStripes)
 +        : 1
-+    Layout.preferredWidth: isFullHeightLauncher ? tasksRoot.height : -1
++    Layout.preferredWidth: isFullHeightLauncher ? launcherButtonWidth : -1
 +    // Explicitly set the preferred height for both launchers and tasks so Qt's
 +    // GridLayout row-height solver distributes rows evenly.
 +    // Without this, Qt gives the row containing the single task more than its
@@ -43,7 +59,7 @@
          ? -1
 -        : ((model.IsLauncher && !tasksRoot.iconsOnly) ? tasksRoot.height / taskList.rows : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
 -    Layout.maximumHeight: tasksRoot.vertical ? TaskManagerApplet.LayoutMetrics.preferredMaxHeight() : -1
-+        : (isFullHeightLauncher ? tasksRoot.height : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
++        : (isFullHeightLauncher ? launcherButtonWidth : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
 +    // Cap task height to one stripe so Qt's GridLayout cannot over-expand the
 +    // task into the empty second row when there is only one window task open.
 +    // Use taskList.rows (set by Qt after layout) with maxStripes as fallback
@@ -57,7 +73,7 @@
  
      required property var model
      required property int index
-@@ -460,8 +494,11 @@
+@@ -460,8 +510,11 @@
          anchors {
              fill: parent
  
@@ -71,16 +87,15 @@
              leftMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
              rightMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
          }
-@@ -584,7 +621,12 @@
+@@ -584,7 +637,11 @@
  
                  PropertyChanges {
                      iconBox.anchors.leftMargin: 0
 -                    iconBox.width: Math.min(task.parent.minimumWidth, tasksRoot.height)
-+                    // For full-height launchers, size the icon from the task's own
-+                    // width (= tasksRoot.height) rather than taskList.minimumWidth,
-+                    // which could be narrower if regular tasks are small.
++                    // For full-height launchers, size the icon to 80% of the panel
++                    // height rather than filling the full panel height.
 +                    iconBox.width: (task.isFullHeightLauncher
-+                        ? task.height
++                        ? task.launcherIconSize
 +                        : Math.min(task.parent.minimumWidth, tasksRoot.height))
                          - iconBox.adjustMargin(true, task.width, taskFrame.margins.left)
                          - iconBox.adjustMargin(true, task.width, taskFrame.margins.right)
@@ -171,7 +186,7 @@
      rows: vertical ? orthogonalCount : stripeCount
 --- a/qml/main.qml
 +++ b/qml/main.qml
-@@ -443,6 +443,17 @@
+@@ -443,6 +443,18 @@
                  readonly property real heightOccupation: taskRepeater.count / rows
  
                  Layout.maximumWidth: {
@@ -181,7 +196,8 @@
 +                    const launcherCols = taskList.fullHeightLauncherCount;
 +                    const taskCols = Math.max(0, columns - launcherCols);
 +                    if (!tasks.vertical && launcherCols > 0 && taskCols > 0) {
-+                        const launcherWidth = tasks.height; // square = panel height
++                        const launcherWidth = Math.round(tasks.height * 0.8) // launcherIconSize
++                            - Math.round(TaskManagerApplet.LayoutMetrics.horizontalMargins() / 2); // launcherButtonWidth adjustment
 +                        return launcherCols * launcherWidth
 +                             + taskCols * TaskManagerApplet.LayoutMetrics.preferredMaxWidth();
 +                    }
