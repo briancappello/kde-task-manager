@@ -13,8 +13,6 @@ import plasma.applet.org.kde.plasma.taskmanager as TaskManagerApplet
 
 GridLayout {
     property bool animating: false
-    property string CUSTOM_OVERRIDE_MARKER: "custom_tasklist_v1"
-    Component.onCompleted: console.warn("CUSTOM_TASKLIST_LOADED rows=" + rows + " cols=" + columns + " launchers=" + fullHeightLauncherCount)
 
     rowSpacing: 0
     columnSpacing: 0
@@ -47,6 +45,9 @@ GridLayout {
     readonly property int stripeCount: {
         if (Plasmoid.configuration.maxStripes === 1) {
             return 1;
+        }
+        if (children.length === 0) {
+            return Plasmoid.configuration.maxStripes;
         }
 
         // Use the first non-full-height-launcher child's implicitHeight/Width for
@@ -85,14 +86,7 @@ GridLayout {
             return maxStripes;
         }
 
-        // When there are full-height launchers, the auto-shrink heuristic
-        // (reducing stripes when few tasks are present) produces wrong results
-        // because it only counts non-launcher tasks against panel width.
-        // Respect the user's maxStripes setting directly in that case.
         const nonLaunchers = count - fullHeightLauncherCount;
-        if (fullHeightLauncherCount > 0 && nonLaunchers > 0) {
-            return maxStripes;
-        }
 
         // The number of tasks that will fill a "stripe" before starting the next one
         const maxTasksPerStripe = vertical

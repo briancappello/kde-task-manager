@@ -443,6 +443,17 @@ PlasmoidItem {
                 readonly property real heightOccupation: taskRepeater.count / rows
 
                 Layout.maximumWidth: {
+                    // For mixed launcher/task columns, compute the actual maximum
+                    // content width directly rather than using the widthOccupation
+                    // heuristic (which assumes all items have the same maxWidth).
+                    const launcherCols = taskList.fullHeightLauncherCount;
+                    const taskCols = Math.max(0, columns - launcherCols);
+                    if (!tasks.vertical && launcherCols > 0 && taskCols > 0) {
+                        const launcherWidth = tasks.height; // square = panel height
+                        return launcherCols * launcherWidth
+                             + taskCols * TaskManagerApplet.LayoutMetrics.preferredMaxWidth();
+                    }
+                    // Upstream formula for all other cases (vertical, no launchers, etc.)
                     const totalMaxWidth = children.reduce((accumulator, child) => {
                             if (!isFinite(child.Layout.maximumWidth)) {
                                 return accumulator;
