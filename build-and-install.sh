@@ -43,10 +43,11 @@ if command -v dnf &>/dev/null; then
         kf6-kwindowsystem-devel \
         plasma-activities-devel \
         plasma-activities-stats-devel \
-        plasma-devel \
+        libplasma-devel \
+        plasma-workspace-devel \
+        kf6-kitemmodels-devel \
         libksysguard-devel \
-        libnotificationmanager-devel \
-        qt6-qtbase-devel \
+	qt6-qtbase-devel \
         qt6-qtdeclarative-devel
 else
     echo "==> dnf not found; assuming build dependencies are already installed."
@@ -60,7 +61,7 @@ if [[ ! -d "$UPSTREAM_CLONE" ]]; then
     echo "==> Cloning upstream plasma-desktop at tag $UPSTREAM_TAG (sparse)..."
     git clone --depth 1 --branch "$UPSTREAM_TAG" --filter=blob:none --sparse \
         "$UPSTREAM_REPO" "$UPSTREAM_CLONE"
-    git -C "$UPSTREAM_CLONE" sparse-checkout set applets/taskmanager
+    git -C "$UPSTREAM_CLONE" sparse-checkout set applets/taskmanager kcms/recentFiles
 else
     echo "==> Upstream clone already present at $UPSTREAM_CLONE"
 fi
@@ -79,10 +80,14 @@ echo "==> Assembling build source tree at $BUILD_SRC..."
 
 # C++ sources, resources, config files from upstream
 for f in backend.cpp backend.h smartlauncherbackend.cpp smartlauncherbackend.h \
-          smartlauncheritem.cpp smartlauncheritem.h \
-          main.xml kactivitymanagerd_plugins_settings.kcfgc; do
-    cp "$UPSTREAM_QML/$f" "$BUILD_SRC/$f" 2>/dev/null || true
+          smartlauncheritem.cpp smartlauncheritem.h main.xml metadata.json; do
+    cp "$UPSTREAM_QML/$f" "$BUILD_SRC/$f"
 done
+# kactivitymanagerd_plugins_settings.kcfgc/.kcfg live outside the taskmanager dir
+cp "$UPSTREAM_CLONE/kcms/recentFiles/kactivitymanagerd_plugins_settings.kcfgc" \
+   "$BUILD_SRC/kactivitymanagerd_plugins_settings.kcfgc"
+cp "$UPSTREAM_CLONE/kcms/recentFiles/kactivitymanagerd_plugins_settings.kcfg" \
+   "$BUILD_SRC/kactivitymanagerd_plugins_settings.kcfg"
 
 # Use our CMakeLists.txt
 cp "$SCRIPT_DIR/CMakeLists.txt" "$BUILD_SRC/CMakeLists.txt"
@@ -103,10 +108,15 @@ done
 # 4. Configure + build
 # ---------------------------------------------------------------------------
 mkdir -p "$BUILD_DIR/cmake-build"
+# Remove stale CMake cache so generator/compiler detection is always fresh.
+rm -f "$BUILD_DIR/cmake-build/CMakeCache.txt"
 
 # Prefer ninja if available, fall back to make.
 if command -v ninja &>/dev/null; then
     CMAKE_GENERATOR="Ninja"
+elif command -v ninja-build &>/dev/null; then
+    CMAKE_GENERATOR="Ninja"
+    export CMAKE_MAKE_PROGRAM="$(command -v ninja-build)"
 else
     echo "==> ninja not found, falling back to Unix Makefiles"
     CMAKE_GENERATOR="Unix Makefiles"
