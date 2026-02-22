@@ -1,0 +1,123 @@
+diff --git a/qml/Task.qml b/qml/Task.qml
+index 79df0dc..512feed 100644
+--- a/qml/Task.qml
++++ b/qml/Task.qml
+@@ -46,15 +46,38 @@ PlasmaCore.ToolTipArea {
+         ? Math.max(TaskManagerApplet.LayoutMetrics.preferredMinWidth(), Math.min(TaskManagerApplet.LayoutMetrics.preferredMaxWidth(), tasksRoot.width / Plasmoid.configuration.maxStripes))
+         : 0
+ 
+-    Layout.fillWidth: true
++    // Full-height launchers are fixed-width squares; regular tasks fill available width.
++    Layout.fillWidth: !isFullHeightLauncher
+     Layout.fillHeight: !inPopup
+     // Launchers span all rows and are given the full panel height explicitly.
+-    Layout.rowSpan: isFullHeightLauncher ? taskList.rows : 1
+-    Layout.preferredHeight: isFullHeightLauncher ? tasksRoot.height : -1
++    // Span all actual stripes. Use stripeCount (not rows, which starts at 0)
++    // and fall back to maxStripes before stripeCount resolves.
++    Layout.rowSpan: isFullHeightLauncher
++        ? Math.max(1, taskList.stripeCount > 0 ? taskList.stripeCount : Plasmoid.configuration.maxStripes)
++        : 1
++    Layout.preferredWidth: isFullHeightLauncher ? tasksRoot.height : -1
++    // Explicitly set the preferred height for both launchers and tasks so Qt's
++    // GridLayout row-height solver distributes rows evenly.
++    // Without this, Qt gives the row containing the single task more than its
++    // fair share when a rowSpan=2 launcher is the only other height constraint.
++    Layout.preferredHeight: inPopup ? -1
++        : (isFullHeightLauncher
++            ? tasksRoot.height
++            : Math.max(TaskManagerApplet.LayoutMetrics.preferredMinHeight(),
++                       tasksRoot.height / Math.max(1, taskList.stripeCount)))
+     Layout.maximumWidth: tasksRoot.vertical
+         ? -1
+         : (isFullHeightLauncher ? tasksRoot.height : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
+-    Layout.maximumHeight: tasksRoot.vertical ? TaskManagerApplet.LayoutMetrics.preferredMaxHeight() : -1
++    // Cap task height to one stripe so Qt's GridLayout cannot over-expand the
++    // task into the empty second row when there is only one window task open.
++    // Use taskList.rows (set by Qt after layout) with maxStripes as fallback
++    // to avoid division by zero before rows is resolved.
++    Layout.maximumHeight: (tasksRoot.vertical || isFullHeightLauncher)
++        ? TaskManagerApplet.LayoutMetrics.preferredMaxHeight()
++        : Math.max(TaskManagerApplet.LayoutMetrics.preferredMinHeight(),
++                   tasksRoot.height / Math.max(1, taskList.rows > 0
++                       ? taskList.rows
++                       : Plasmoid.configuration.maxStripes))
+ 
+     required property var model
+     required property int index
+@@ -471,12 +494,11 @@ PlasmaCore.ToolTipArea {
+         anchors {
+             fill: parent
+ 
+-            // MODIFIED
+-            //topMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+-            //bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
++            // Don't add top/bottom icon margin for launchers — they span all rows
++            // and should fill the full panel height without inset.
+             topMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+             bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+-            
++
+             leftMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+             rightMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+         }
+diff --git a/qml/TaskList.qml b/qml/TaskList.qml
+index bec196a..020a7a2 100644
+--- a/qml/TaskList.qml
++++ b/qml/TaskList.qml
+@@ -13,8 +13,6 @@ import plasma.applet.org.kde.plasma.taskmanager as TaskManagerApplet
+ 
+ GridLayout {
+     property bool animating: false
+-    property string CUSTOM_OVERRIDE_MARKER: "custom_tasklist_v1"
+-    Component.onCompleted: console.warn("CUSTOM_TASKLIST_LOADED rows=" + rows + " cols=" + columns + " launchers=" + fullHeightLauncherCount)
+ 
+     rowSpacing: 0
+     columnSpacing: 0
+@@ -48,6 +46,9 @@ GridLayout {
+         if (Plasmoid.configuration.maxStripes === 1) {
+             return 1;
+         }
++        if (children.length === 0) {
++            return Plasmoid.configuration.maxStripes;
++        }
+ 
+         // Use the first non-full-height-launcher child's implicitHeight/Width for
+         // the stripeSizeLimit calculation, so that full-height launchers (which
+@@ -85,14 +86,7 @@ GridLayout {
+             return maxStripes;
+         }
+ 
+-        // When there are full-height launchers, the auto-shrink heuristic
+-        // (reducing stripes when few tasks are present) produces wrong results
+-        // because it only counts non-launcher tasks against panel width.
+-        // Respect the user's maxStripes setting directly in that case.
+         const nonLaunchers = count - fullHeightLauncherCount;
+-        if (fullHeightLauncherCount > 0 && nonLaunchers > 0) {
+-            return maxStripes;
+-        }
+ 
+         // The number of tasks that will fill a "stripe" before starting the next one
+         const maxTasksPerStripe = vertical
+diff --git a/qml/main.qml b/qml/main.qml
+index da27bb0..6aaf85a 100644
+--- a/qml/main.qml
++++ b/qml/main.qml
+@@ -443,6 +443,17 @@ PlasmoidItem {
+                 readonly property real heightOccupation: taskRepeater.count / rows
+ 
+                 Layout.maximumWidth: {
++                    // For mixed launcher/task columns, compute the actual maximum
++                    // content width directly rather than using the widthOccupation
++                    // heuristic (which assumes all items have the same maxWidth).
++                    const launcherCols = taskList.fullHeightLauncherCount;
++                    const taskCols = Math.max(0, columns - launcherCols);
++                    if (!tasks.vertical && launcherCols > 0 && taskCols > 0) {
++                        const launcherWidth = tasks.height; // square = panel height
++                        return launcherCols * launcherWidth
++                             + taskCols * TaskManagerApplet.LayoutMetrics.preferredMaxWidth();
++                    }
++                    // Upstream formula for all other cases (vertical, no launchers, etc.)
+                     const totalMaxWidth = children.reduce((accumulator, child) => {
+                             if (!isFinite(child.Layout.maximumWidth)) {
+                                 return accumulator;
