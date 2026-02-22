@@ -1,8 +1,21 @@
-diff --git a/qml/Task.qml b/qml/Task.qml
-index 79df0dc..512feed 100644
 --- a/qml/Task.qml
 +++ b/qml/Task.qml
-@@ -46,15 +46,38 @@ PlasmaCore.ToolTipArea {
+@@ -28,6 +28,14 @@
+     // so un-rotate them here to fix that.
+     rotation: Plasmoid.configuration.reverseMode && Plasmoid.formFactor === PlasmaCore.Types.Vertical ? 180 : 0
+ 
++    // For pinned launchers on a horizontal multi-row panel, span all rows so
++    // the icon renders as a full-height square.
++    // implicitHeight intentionally stays at the per-row value so that TaskList's
++    // stripeCount calculation (which reads children[0].implicitHeight) is not
++    // affected. Layout.rowSpan and Layout.preferredHeight do the actual work.
++    readonly property bool isFullHeightLauncher: !inPopup && !tasksRoot.vertical
++                                                 && !tasksRoot.iconsOnly && model.IsLauncher
++
+     implicitHeight: inPopup
+                     ? TaskManagerApplet.LayoutMetrics.preferredHeightInPopup()
+                     : (tasksRoot.vertical
+@@ -38,12 +46,38 @@
          ? Math.max(TaskManagerApplet.LayoutMetrics.preferredMinWidth(), Math.min(TaskManagerApplet.LayoutMetrics.preferredMaxWidth(), tasksRoot.width / Plasmoid.configuration.maxStripes))
          : 0
  
@@ -10,9 +23,7 @@ index 79df0dc..512feed 100644
 +    // Full-height launchers are fixed-width squares; regular tasks fill available width.
 +    Layout.fillWidth: !isFullHeightLauncher
      Layout.fillHeight: !inPopup
-     // Launchers span all rows and are given the full panel height explicitly.
--    Layout.rowSpan: isFullHeightLauncher ? taskList.rows : 1
--    Layout.preferredHeight: isFullHeightLauncher ? tasksRoot.height : -1
++    // Launchers span all rows and are given the full panel height explicitly.
 +    // Span all actual stripes. Use stripeCount (not rows, which starts at 0)
 +    // and fall back to maxStripes before stripeCount resolves.
 +    Layout.rowSpan: isFullHeightLauncher
@@ -30,8 +41,9 @@ index 79df0dc..512feed 100644
 +                       tasksRoot.height / Math.max(1, taskList.stripeCount)))
      Layout.maximumWidth: tasksRoot.vertical
          ? -1
-         : (isFullHeightLauncher ? tasksRoot.height : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
+-        : ((model.IsLauncher && !tasksRoot.iconsOnly) ? tasksRoot.height / taskList.rows : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
 -    Layout.maximumHeight: tasksRoot.vertical ? TaskManagerApplet.LayoutMetrics.preferredMaxHeight() : -1
++        : (isFullHeightLauncher ? tasksRoot.height : TaskManagerApplet.LayoutMetrics.preferredMaxWidth())
 +    // Cap task height to one stripe so Qt's GridLayout cannot over-expand the
 +    // task into the empty second row when there is only one window task open.
 +    // Use taskList.rows (set by Qt after layout) with maxStripes as fallback
@@ -45,65 +57,121 @@ index 79df0dc..512feed 100644
  
      required property var model
      required property int index
-@@ -471,12 +494,11 @@ PlasmaCore.ToolTipArea {
+@@ -460,8 +494,11 @@
          anchors {
              fill: parent
  
--            // MODIFIED
--            //topMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
--            //bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+-            topMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
+-            bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
 +            // Don't add top/bottom icon margin for launchers — they span all rows
 +            // and should fill the full panel height without inset.
-             topMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
-             bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
--            
++            topMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
++            bottomMargin: (!task.tasksRoot.vertical && taskList.rows > 1 && !task.model.IsLauncher) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
 +
              leftMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
              rightMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
          }
-diff --git a/qml/TaskList.qml b/qml/TaskList.qml
-index bec196a..020a7a2 100644
+@@ -584,7 +621,12 @@
+ 
+                 PropertyChanges {
+                     iconBox.anchors.leftMargin: 0
+-                    iconBox.width: Math.min(task.parent.minimumWidth, tasksRoot.height)
++                    // For full-height launchers, size the icon from the task's own
++                    // width (= tasksRoot.height) rather than taskList.minimumWidth,
++                    // which could be narrower if regular tasks are small.
++                    iconBox.width: (task.isFullHeightLauncher
++                        ? task.height
++                        : Math.min(task.parent.minimumWidth, tasksRoot.height))
+                         - iconBox.adjustMargin(true, task.width, taskFrame.margins.left)
+                         - iconBox.adjustMargin(true, task.width, taskFrame.margins.right)
+                 }
 --- a/qml/TaskList.qml
 +++ b/qml/TaskList.qml
-@@ -13,8 +13,6 @@ import plasma.applet.org.kde.plasma.taskmanager as TaskManagerApplet
+@@ -30,31 +30,77 @@
+         .filter(item => item.visible && item.width > 0)
+         .reduce((minimumWidth, item) => Math.min(minimumWidth, item.width), Infinity)
  
- GridLayout {
-     property bool animating: false
--    property string CUSTOM_OVERRIDE_MARKER: "custom_tasklist_v1"
--    Component.onCompleted: console.warn("CUSTOM_TASKLIST_LOADED rows=" + rows + " cols=" + columns + " launchers=" + fullHeightLauncherCount)
- 
-     rowSpacing: 0
-     columnSpacing: 0
-@@ -48,6 +46,9 @@ GridLayout {
++    // Count how many children are full-height launchers (rowSpan = all rows).
++    // These each occupy exactly 1 column regardless of stripeCount.
++    readonly property int fullHeightLauncherCount: {
++        let n = 0;
++        for (let i = 0; i < children.length; ++i) {
++            if (children[i].isFullHeightLauncher === true) {
++                ++n;
++            }
++        }
++        return n;
++    }
++
+     readonly property int stripeCount: {
          if (Plasmoid.configuration.maxStripes === 1) {
              return 1;
          }
 +        if (children.length === 0) {
 +            return Plasmoid.configuration.maxStripes;
 +        }
++
++        // Use the first non-full-height-launcher child's implicitHeight/Width for
++        // the stripeSizeLimit calculation, so that full-height launchers (which
++        // have a larger preferredHeight) don't incorrectly reduce stripeCount.
++        // Find a Task child that is not a full-height launcher to use as the
++        // reference for implicitHeight. Skip non-Task children (e.g. Repeater).
++        let referenceChild = null;
++        for (let i = 0; i < children.length; ++i) {
++            const child = children[i];
++            if (child.hasOwnProperty("isFullHeightLauncher") && !child.isFullHeightLauncher) {
++                referenceChild = child;
++                break;
++            }
++        }
++        // Fall back to any Task child if all are full-height launchers.
++        if (!referenceChild) {
++            for (let i = 0; i < children.length; ++i) {
++                if (children[i].hasOwnProperty("isFullHeightLauncher")) {
++                    referenceChild = children[i];
++                    break;
++                }
++            }
++        }
++        if (!referenceChild) {
++            referenceChild = children[0];
++        }
  
-         // Use the first non-full-height-launcher child's implicitHeight/Width for
-         // the stripeSizeLimit calculation, so that full-height launchers (which
-@@ -85,14 +86,7 @@ GridLayout {
+         // The maximum number of stripes allowed by the applet's size
+         const stripeSizeLimit = vertical
+-            ? Math.floor(parent.width / children[0].implicitWidth)
+-            : Math.floor(parent.height / children[0].implicitHeight)
++            ? Math.floor(parent.width / referenceChild.implicitWidth)
++            : Math.floor(parent.height / referenceChild.implicitHeight)
+         const maxStripes = Math.min(Plasmoid.configuration.maxStripes, stripeSizeLimit)
+ 
+         if (Plasmoid.configuration.forceStripes) {
              return maxStripes;
          }
  
--        // When there are full-height launchers, the auto-shrink heuristic
--        // (reducing stripes when few tasks are present) produces wrong results
--        // because it only counts non-launcher tasks against panel width.
--        // Respect the user's maxStripes setting directly in that case.
-         const nonLaunchers = count - fullHeightLauncherCount;
--        if (fullHeightLauncherCount > 0 && nonLaunchers > 0) {
--            return maxStripes;
--        }
- 
++        const nonLaunchers = count - fullHeightLauncherCount;
++
          // The number of tasks that will fill a "stripe" before starting the next one
          const maxTasksPerStripe = vertical
-diff --git a/qml/main.qml b/qml/main.qml
-index da27bb0..6aaf85a 100644
+             ? Math.ceil(parent.height / TaskManagerApplet.LayoutMetrics.preferredMinHeight())
+             : Math.ceil(parent.width / TaskManagerApplet.LayoutMetrics.preferredMinWidth())
+ 
+-        return Math.min(Math.ceil(count / maxTasksPerStripe), maxStripes)
++        return Math.min(Math.ceil(nonLaunchers / maxTasksPerStripe), maxStripes)
+     }
+ 
+     readonly property int orthogonalCount: {
+-        return Math.ceil(count / stripeCount);
++        // Full-height launchers each occupy 1 column; remaining items share
++        // columns in the normal stripeCount rows.
++        const nonLauncherCount = count - fullHeightLauncherCount;
++        return fullHeightLauncherCount + Math.ceil(nonLauncherCount / stripeCount);
+     }
+ 
+     rows: vertical ? orthogonalCount : stripeCount
 --- a/qml/main.qml
 +++ b/qml/main.qml
-@@ -443,6 +443,17 @@ PlasmoidItem {
+@@ -443,6 +443,17 @@
                  readonly property real heightOccupation: taskRepeater.count / rows
  
                  Layout.maximumWidth: {
