@@ -71,7 +71,7 @@ UPSTREAM_QML="$UPSTREAM_CLONE/applets/taskmanager"
 # ---------------------------------------------------------------------------
 # 3. Assemble a build tree:
 #    - CMakeLists.txt, C++ sources, resources  from upstream
-#    - QML files: patched ones from this repo, rest from upstream
+#    - QML files: upstream copies with our patch applied on top
 # ---------------------------------------------------------------------------
 BUILD_SRC="$BUILD_DIR/src"
 mkdir -p "$BUILD_SRC/qml/code"
@@ -92,17 +92,16 @@ cp "$UPSTREAM_CLONE/kcms/recentFiles/kactivitymanagerd_plugins_settings.kcfg" \
 # Use our CMakeLists.txt
 cp "$SCRIPT_DIR/CMakeLists.txt" "$BUILD_SRC/CMakeLists.txt"
 
-# Copy all upstream QML files first
+# Copy all upstream QML files
 cp "$UPSTREAM_QML"/qml/*.qml "$BUILD_SRC/qml/"
 cp "$UPSTREAM_QML"/qml/code/*.js "$BUILD_SRC/qml/code/"
 
-# Overlay our patched QML files (overwrite upstream copies)
-for f in Task.qml TaskList.qml main.qml; do
-    if [[ -f "$SCRIPT_DIR/qml/$f" ]]; then
-        cp "$SCRIPT_DIR/qml/$f" "$BUILD_SRC/qml/$f"
-        echo "    patched: $f"
-    fi
-done
+# Apply our patch on top of the upstream QML files.
+# The patch paths are qml/Task.qml etc. (p1 strips the a/b git prefix),
+# so run from BUILD_SRC where the qml/ directory lives.
+echo "==> Applying patch..."
+patch -p1 -d "$BUILD_SRC" < "$SCRIPT_DIR/fullheight-launchers.patch"
+echo "    patch applied cleanly"
 
 # ---------------------------------------------------------------------------
 # 4. Configure + build
