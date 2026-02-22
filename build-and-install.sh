@@ -47,7 +47,7 @@ if command -v dnf &>/dev/null; then
         libksysguard-devel \
         libnotificationmanager-devel \
         qt6-qtbase-devel \
-        qt6-qtdeclarative-devel 2>/dev/null || true
+        qt6-qtdeclarative-devel
 else
     echo "==> dnf not found; assuming build dependencies are already installed."
 fi
@@ -103,8 +103,17 @@ done
 # 4. Configure + build
 # ---------------------------------------------------------------------------
 mkdir -p "$BUILD_DIR/cmake-build"
-echo "==> Configuring..."
-cmake -S "$BUILD_SRC" -B "$BUILD_DIR/cmake-build" -G Ninja \
+
+# Prefer ninja if available, fall back to make.
+if command -v ninja &>/dev/null; then
+    CMAKE_GENERATOR="Ninja"
+else
+    echo "==> ninja not found, falling back to Unix Makefiles"
+    CMAKE_GENERATOR="Unix Makefiles"
+fi
+
+echo "==> Configuring (generator: $CMAKE_GENERATOR)..."
+cmake -S "$BUILD_SRC" -B "$BUILD_DIR/cmake-build" -G "$CMAKE_GENERATOR" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_TESTING=OFF
 
@@ -114,7 +123,14 @@ cmake --build "$BUILD_DIR/cmake-build" --parallel
 # ---------------------------------------------------------------------------
 # 5. Install .so to ~/.local
 # ---------------------------------------------------------------------------
-PLUGIN_DIR="$HOME/.local/lib64/qt6/plugins/plasma/applets"
+# Detect lib dir: use lib64 if the system Qt lives there, otherwise lib.
+if [[ -d /usr/lib64/qt6 ]]; then
+    LOCAL_LIB="lib64"
+else
+    LOCAL_LIB="lib"
+fi
+
+PLUGIN_DIR="$HOME/.local/$LOCAL_LIB/qt6/plugins/plasma/applets"
 mkdir -p "$PLUGIN_DIR"
 cp "$BUILD_DIR/cmake-build/bin/plasma/applets/org.kde.plasma.taskmanager.so" \
    "$PLUGIN_DIR/org.kde.plasma.taskmanager.so"
@@ -127,12 +143,13 @@ ENV_FILE="$HOME/.config/plasma-workspace/env/env.sh"
 mkdir -p "$(dirname "$ENV_FILE")"
 touch "$ENV_FILE"
 
-if ! grep -q 'QT_PLUGIN_PATH.*\.local/lib64/qt6/plugins' "$ENV_FILE"; then
+LOCAL_PLUGIN_BASE="$HOME/.local/$LOCAL_LIB/qt6/plugins"
+if ! grep -qF "$LOCAL_PLUGIN_BASE" "$ENV_FILE"; then
     echo "==> Adding QT_PLUGIN_PATH to $ENV_FILE..."
-    cat >> "$ENV_FILE" <<'EOF'
+    cat >> "$ENV_FILE" <<EOF
 
 # Added by plasma-taskmanager-fullheight-launchers build-and-install.sh
-export QT_PLUGIN_PATH="$HOME/.local/lib64/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+export QT_PLUGIN_PATH="$LOCAL_PLUGIN_BASE\${QT_PLUGIN_PATH:+:\$QT_PLUGIN_PATH}"
 EOF
 fi
 
