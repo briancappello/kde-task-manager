@@ -189,3 +189,52 @@
                      const totalMaxWidth = children.reduce((accumulator, child) => {
                              if (!isFinite(child.Layout.maximumWidth)) {
                                  return accumulator;
+--- a/main.xml
++++ b/main.xml
+@@ -8,7 +8,7 @@
+   <group name="General">
+     <entry name="showOnlyCurrentScreen" type="Bool">
+       <label>Whether to show only window tasks that are on the same screen as the widget.</label>
+-      <default>false</default>
++      <default>true</default>
+     </entry>
+     <entry name="showOnlyCurrentDesktop" type="Bool">
+       <label>Whether to only show tasks that are on the current virtual desktop.</label>
+@@ -28,7 +28,7 @@
+     </entry>
+     <entry name="groupingStrategy" type="Enum">
+       <label>How tasks are grouped: 0 = Do Not Group, 1 = By Program Name</label>
+-      <default>1</default>
++      <default>0</default>
+     </entry>
+     <entry name="groupedTaskVisualization" type="Enum">
+       <label>What happens when clicking on a grouped task: 0 = cycle through grouped tasks, 1 = try to show tooltips, 2 = try to show present Windows effect, 3 = show textual list (AKA group dialog)</label>
+@@ -52,7 +52,7 @@
+     </entry>
+     <entry name="sortingStrategy" type="Int">
+       <label>Values from TaskManager::TasksModel::SortMode</label>
+-      <default>1</default>
++      <default>0</default>
+     </entry>
+     <entry name="separateLaunchers" type="Bool">
+       <label>Whether launcher tasks are sorted separately at the left side of the widget or can be mixed with other tasks.</label>
+@@ -60,16 +60,16 @@
+     </entry>
+     <entry name="hideLauncherOnStart" type="Bool">
+       <label>Whether launcher tasks should be hidden when their application is launched.</label>
+-      <default>true</default>
++      <default>false</default>
+     </entry>
+     <entry name="maxStripes" type="Int">
+       <label>The maximum number of rows (in a horizontal-orientation containment, i.e. panel) or columns (in a vertical-orientation containment) to layout task buttons in.</label>
+-      <default>1</default>
++      <default>2</default>
+       <min>1</min>
+     </entry>
+     <entry name="forceStripes" type="Bool">
+       <label>Whether to try and always layout task buttons in as many rows/columns as set via maxStripes.</label>
+-      <default>false</default>
++      <default>true</default>
+     </entry>
+     <entry name="showToolTips" type="Bool">
+       <label>Whether to show tooltips when hovering task buttons.</label>
