@@ -28,27 +28,41 @@ if [[ "${1:-}" == "--clean" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Install build dependencies (Fedora / dnf)
+# 1. Install build dependencies (Fedora / dnf) — only if any are missing
 # ---------------------------------------------------------------------------
+BUILD_DEPS=(
+    cmake ninja-build gcc-c++
+    extra-cmake-modules
+    kf6-kconfig-devel
+    kf6-ki18n-devel
+    kf6-kio-devel
+    kf6-knotifications-devel
+    kf6-kservice-devel
+    kf6-kwindowsystem-devel
+    plasma-activities-devel
+    plasma-activities-stats-devel
+    libplasma-devel
+    plasma-workspace-devel
+    kf6-kitemmodels-devel
+    libksysguard-devel
+    qt6-qtbase-devel
+    qt6-qtdeclarative-devel
+)
+
 if command -v dnf &>/dev/null; then
-    echo "==> Installing build dependencies via dnf..."
-    sudo dnf install -y \
-        cmake ninja-build gcc-c++ \
-        extra-cmake-modules \
-        kf6-kconfig-devel \
-        kf6-ki18n-devel \
-        kf6-kio-devel \
-        kf6-knotifications-devel \
-        kf6-kservice-devel \
-        kf6-kwindowsystem-devel \
-        plasma-activities-devel \
-        plasma-activities-stats-devel \
-        libplasma-devel \
-        plasma-workspace-devel \
-        kf6-kitemmodels-devel \
-        libksysguard-devel \
-	qt6-qtbase-devel \
-        qt6-qtdeclarative-devel
+    MISSING=()
+    for pkg in "${BUILD_DEPS[@]}"; do
+        if ! rpm -q "$pkg" &>/dev/null; then
+            MISSING+=("$pkg")
+        fi
+    done
+
+    if [[ ${#MISSING[@]} -gt 0 ]]; then
+        echo "==> Installing missing build dependencies: ${MISSING[*]}"
+        sudo dnf install -y "${MISSING[@]}"
+    else
+        echo "==> All build dependencies already installed."
+    fi
 else
     echo "==> dnf not found; assuming build dependencies are already installed."
 fi

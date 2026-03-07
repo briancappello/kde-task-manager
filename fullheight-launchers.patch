@@ -24,7 +24,7 @@
      implicitHeight: inPopup
                      ? TaskManagerApplet.LayoutMetrics.preferredHeightInPopup()
                      : (tasksRoot.vertical
-@@ -38,12 +55,45 @@
+@@ -38,12 +55,50 @@
          ? Math.max(TaskManagerApplet.LayoutMetrics.preferredMinWidth(), Math.min(TaskManagerApplet.LayoutMetrics.preferredMaxWidth(), tasksRoot.width / Plasmoid.configuration.maxStripes))
          : 0
  
@@ -45,7 +45,12 @@
 +    Layout.rowSpan: isFullHeightLauncher
 +        ? Math.max(1, taskList.stripeCount > 0 ? taskList.stripeCount : Plasmoid.configuration.maxStripes)
 +        : 1
-+    Layout.preferredWidth: isFullHeightLauncher ? launcherButtonWidth : -1
++    // Give every non-launcher task the same explicit preferred width so that
++    // GridLayout allocates equal column widths. Using -1 (implicit width = 0)
++    // can cause non-uniform column distribution when mixed with fixed-width
++    // launcher columns.
++    Layout.preferredWidth: isFullHeightLauncher ? launcherButtonWidth
++        : TaskManagerApplet.LayoutMetrics.preferredMinWidth()
 +    // Explicitly set the preferred height for both launchers and tasks so Qt's
 +    // GridLayout row-height solver distributes rows evenly.
 +    // Without this, Qt gives the row containing the single task more than its
@@ -73,7 +78,7 @@
  
      required property var model
      required property int index
-@@ -460,8 +510,11 @@
+@@ -460,8 +514,11 @@
          anchors {
              fill: parent
  
@@ -87,7 +92,7 @@
              leftMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
              rightMargin: ((task.inPopup || task.tasksRoot.vertical) && taskList.columns > 1) ? TaskManagerApplet.LayoutMetrics.iconMargin : 0
          }
-@@ -584,7 +637,11 @@
+@@ -584,7 +641,11 @@
  
                  PropertyChanges {
                      iconBox.anchors.leftMargin: 0
@@ -102,7 +107,7 @@
                  }
 --- a/qml/TaskList.qml
 +++ b/qml/TaskList.qml
-@@ -30,31 +30,77 @@
+@@ -30,31 +30,78 @@
          .filter(item => item.visible && item.width > 0)
          .reduce((minimumWidth, item) => Math.min(minimumWidth, item.width), Infinity)
  
@@ -172,7 +177,7 @@
              : Math.ceil(parent.width / TaskManagerApplet.LayoutMetrics.preferredMinWidth())
  
 -        return Math.min(Math.ceil(count / maxTasksPerStripe), maxStripes)
-+        return Math.min(Math.ceil(nonLaunchers / maxTasksPerStripe), maxStripes)
++        return Math.max(1, Math.min(Math.ceil(nonLaunchers / maxTasksPerStripe), maxStripes))
      }
  
      readonly property int orthogonalCount: {
@@ -180,14 +185,21 @@
 +        // Full-height launchers each occupy 1 column; remaining items share
 +        // columns in the normal stripeCount rows.
 +        const nonLauncherCount = count - fullHeightLauncherCount;
-+        return fullHeightLauncherCount + Math.ceil(nonLauncherCount / stripeCount);
++        return fullHeightLauncherCount
++            + (stripeCount > 0 ? Math.ceil(nonLauncherCount / stripeCount) : 0);
      }
  
      rows: vertical ? orthogonalCount : stripeCount
 --- a/qml/main.qml
 +++ b/qml/main.qml
-@@ -443,6 +443,18 @@
-                 readonly property real heightOccupation: taskRepeater.count / rows
+@@ -439,10 +439,22 @@
+ 
+                 count: tasksModel.count
+ 
+-                readonly property real widthOccupation: taskRepeater.count / columns
+-                readonly property real heightOccupation: taskRepeater.count / rows
++                readonly property real widthOccupation: columns > 0 ? taskRepeater.count / columns : 1
++                readonly property real heightOccupation: rows > 0 ? taskRepeater.count / rows : 1
  
                  Layout.maximumWidth: {
 +                    // For mixed launcher/task columns, compute the actual maximum
