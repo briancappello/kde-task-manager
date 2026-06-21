@@ -24,13 +24,16 @@ PKG=arches-taskmanager-patched
 REPO_DIR=/opt/arches-repo
 REPO_DB=arches-local.db.tar.gz
 
-BUILD_ONLY=0; NO_INSTALL=0; TARGET_VER=""
-case "${1:-}" in
-  --build-only) BUILD_ONLY=1 ;;
-  --no-install) NO_INSTALL=1 ;;
-  ''|-*) [[ "${1:-}" == -* && -n "${1:-}" ]] && { echo "unknown arg: $1" >&2; exit 2; } ;;
-  *) TARGET_VER="$1" ;;
-esac
+BUILD_ONLY=0; NO_INSTALL=0; FORCE=0; TARGET_VER=""
+for a in "$@"; do
+  case "$a" in
+    --build-only) BUILD_ONLY=1 ;;
+    --no-install) NO_INSTALL=1 ;;
+    --force) FORCE=1 ;;
+    -*) echo "unknown arg: $a" >&2; exit 2 ;;
+    *) TARGET_VER="$a" ;;
+  esac
+done
 
 die() { echo "!! $*" >&2; exit 1; }
 note() { echo "==> $*"; }
@@ -42,6 +45,13 @@ if [[ -z "$TARGET_VER" ]]; then
 fi
 [[ -n "$TARGET_VER" ]] || die "could not determine target version"
 note "Target plasma-desktop version: $TARGET_VER"
+
+# Skip early if the installed applet already matches the target version.
+installed="$(pacman -Q "$PKG" 2>/dev/null | awk '{print $2}' | cut -d- -f1 || true)"
+if [[ "$installed" == "$TARGET_VER" && "$FORCE" != 1 ]]; then
+  note "$PKG already built for plasma-desktop $TARGET_VER — nothing to do. (--force to rebuild)"
+  exit 0
+fi
 
 # Point the PKGBUILD at the target version.
 sed -i -E "s/^pkgver=.*/pkgver=$TARGET_VER/" PKGBUILD
