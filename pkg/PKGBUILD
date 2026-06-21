@@ -1,0 +1,87 @@
+# Maintainer: Brian Cappello <briancappello@gmail.com>
+#
+# Patched KDE Task Manager applet: full-height square launcher icons on
+# multi-row horizontal panels.  Built from the plasma-desktop release tarball
+# with fullheight-launchers.patch, using a standalone CMakeLists that compiles
+# ONLY the taskmanager applet.  Installed to an overlay Qt plugin root + a
+# plasma-workspace env file, so it overrides plasma-desktop's stock applet via
+# QT_PLUGIN_PATH precedence WITHOUT file-conflicting with plasma-desktop.
+
+pkgname=arches-taskmanager-patched
+pkgver=6.7.0
+_dirver=$(echo $pkgver | cut -d. -f1-3)
+pkgrel=1
+pkgdesc='Patched KDE Task Manager — full-height launchers on multi-row panels'
+arch=(x86_64)
+url='https://invent.kde.org/plasma/plasma-desktop'
+license=(GPL-2.0-or-later)
+depends=(plasma-workspace)
+makedepends=(extra-cmake-modules
+             kconfig
+             ki18n
+             kio
+             knotifications
+             kservice
+             kwindowsystem
+             plasma-activities
+             plasma-activities-stats
+             libplasma
+             kitemmodels
+             libksysguard
+             qt6-base
+             qt6-declarative)
+# Overlay install: no file from plasma-desktop is touched, so no conflicts=().
+source=(https://download.kde.org/stable/plasma/$_dirver/plasma-desktop-$pkgver.tar.xz{,.sig}
+        fullheight-launchers.patch
+        CMakeLists.txt
+        qtpath-env.sh)
+sha256sums=('63513b54f6f60b3cd7ec35ca2f0962bdf25669729388e8515ac1d3b8899ee47f'
+            'SKIP'
+            '7be99ba6db917e339f944041145f1020f108b6a05a41ec98118b42e23613f476'
+            '94eb9e248f814cc68c7616d9d1d926bf9d53ea5e315efcc6dff81d365d4233bb'
+            'c1b48b6490dc5bfdd40127b5f7b9952f44a3d5ecec70f040426654fe5892de08')
+validpgpkeys=('E0A3EB202F8E57528E13E72FD7574483BB57B18D'  # Jonathan Esk-Riddell <jr@jriddell.org>
+              '0AAC775BB6437A8D9AF7A3ACFE0784117FBCE11D'  # Bhushan Shah <bshah@kde.org>
+              'D07BD8662C56CB291B316EB2F5675605C74E02CF'  # David Edmundson <davidedmundson@kde.org>
+              '90A968ACA84537CC27B99EAF2C8DF587A6D4AAC1'  # Nicolas Fella <nicolas.fella@kde.org>
+              '1FA881591C26B276D7A5518EEAAF29B42A678C20') # Marco Martin <notmart@gmail.com>
+
+_applet() { echo "$srcdir/plasma-desktop-$pkgver/applets/taskmanager"; }
+
+prepare() {
+  # Apply our patch to the applet's QML/xml in-tree (-F0 = loud fail on drift).
+  cd "$(_applet)"
+  patch -Np1 -F0 -i "$srcdir/fullheight-launchers.patch"
+}
+
+build() {
+  # Assemble a standalone build tree containing only the applet's sources +
+  # our CMakeLists (mirrors build-and-install.sh).  A removed/renamed upstream
+  # QML file makes cmake fail loudly here (e.g. Badge.qml in 6.7.0).
+  local src; src="$(_applet)"
+  local pd="$srcdir/plasma-desktop-$pkgver"
+  local asm="$srcdir/asm"
+  rm -rf "$asm"; mkdir -p "$asm/qml/code"
+
+  cp "$src"/{backend.cpp,backend.h,smartlauncherbackend.cpp,smartlauncherbackend.h,\
+smartlauncheritem.cpp,smartlauncheritem.h,main.xml,metadata.json} "$asm/"
+  cp "$pd/kcms/recentFiles/kactivitymanagerd_plugins_settings.kcfgc" "$asm/"
+  cp "$pd/kcms/recentFiles/kactivitymanagerd_plugins_settings.kcfg" "$asm/"
+  cp "$srcdir/CMakeLists.txt" "$asm/CMakeLists.txt"
+  cp "$src"/qml/*.qml "$asm/qml/"
+  cp "$src"/qml/code/*.js "$asm/qml/code/"
+
+  cmake -B build -S "$asm" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTING=OFF
+  cmake --build build
+}
+
+package() {
+  # Overlay plugin root (matches qtpath-env.sh QT_PLUGIN_PATH entry).
+  install -Dm644 build/bin/plasma/applets/org.kde.plasma.taskmanager.so \
+    "$pkgdir/usr/lib/qt6-overlay/plugins/plasma/applets/org.kde.plasma.taskmanager.so"
+  # Env file sourced by startplasma to prepend the overlay root.
+  install -Dm644 "$srcdir/qtpath-env.sh" \
+    "$pkgdir/etc/xdg/plasma-workspace/env/10-arches-taskmanager-overlay.sh"
+}

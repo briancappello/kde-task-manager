@@ -5,7 +5,7 @@
 # launchers as full-height square icons on multi-row horizontal panels,
 # and installs it to ~/.local so it takes precedence over the system copy.
 #
-# Tested on: Fedora 42 Asahi Remix (aarch64), plasma-desktop 6.6.0, Qt 6.10.2
+# Tested on: Fedora 42 / Arches Linux, plasma-desktop 6.7.0
 #
 # Usage:
 #   ./build-and-install.sh          # build + install + print restart instructions
@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
-UPSTREAM_TAG="v6.6.0"
+UPSTREAM_TAG="v6.7.0"
 UPSTREAM_REPO="https://invent.kde.org/plasma/plasma-desktop"
 UPSTREAM_CLONE="/tmp/plasma-desktop-upstream-src"
 
@@ -28,9 +28,9 @@ if [[ "${1:-}" == "--clean" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Install build dependencies (Fedora / dnf) — only if any are missing
+# 1. Install build dependencies — only if any are missing
 # ---------------------------------------------------------------------------
-BUILD_DEPS=(
+FEDORA_DEPS=(
     cmake ninja-build gcc-c++
     extra-cmake-modules
     kf6-kconfig-devel
@@ -49,9 +49,42 @@ BUILD_DEPS=(
     qt6-qtdeclarative-devel
 )
 
-if command -v dnf &>/dev/null; then
+ARCH_DEPS=(
+    cmake ninja gcc
+    extra-cmake-modules
+    kconfig
+    ki18n
+    kio
+    knotifications
+    kservice
+    kwindowsystem
+    plasma-activities
+    plasma-activities-stats
+    libplasma
+    plasma-workspace
+    kitemmodels
+    libksysguard
+    qt6-base
+    qt6-declarative
+)
+
+if command -v pacman &>/dev/null; then
     MISSING=()
-    for pkg in "${BUILD_DEPS[@]}"; do
+    for pkg in "${ARCH_DEPS[@]}"; do
+        if ! pacman -Qi "$pkg" &>/dev/null; then
+            MISSING+=("$pkg")
+        fi
+    done
+
+    if [[ ${#MISSING[@]} -gt 0 ]]; then
+        echo "==> Installing missing build dependencies: ${MISSING[*]}"
+        sudo pacman -S --needed --noconfirm "${MISSING[@]}"
+    else
+        echo "==> All build dependencies already installed."
+    fi
+elif command -v dnf &>/dev/null; then
+    MISSING=()
+    for pkg in "${FEDORA_DEPS[@]}"; do
         if ! rpm -q "$pkg" &>/dev/null; then
             MISSING+=("$pkg")
         fi
@@ -64,7 +97,7 @@ if command -v dnf &>/dev/null; then
         echo "==> All build dependencies already installed."
     fi
 else
-    echo "==> dnf not found; assuming build dependencies are already installed."
+    echo "==> Neither pacman nor dnf found; assuming build dependencies are already installed."
 fi
 
 # ---------------------------------------------------------------------------
