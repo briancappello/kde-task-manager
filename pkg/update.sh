@@ -67,7 +67,7 @@ for k in "${keys[@]}"; do gpg --list-keys "$k" >/dev/null 2>&1 || missing+=("$k"
 ((${#missing[@]})) && die "missing KDE signing keys: ${missing[*]} (gpg --recv-keys ${missing[*]})"
 
 note "Building package (makepkg)..."
-makepkg -f
+makepkg -Cf
 
 pkgfile="$(ls -t ${PKG}-*-x86_64.pkg.tar.zst | head -1)"
 [[ -f "$pkgfile" ]] || die "build succeeded but no package file found"
