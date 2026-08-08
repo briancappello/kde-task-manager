@@ -68,21 +68,31 @@ ARCH_DEPS=(
     qt6-declarative
 )
 
-if command -v pacman &>/dev/null; then
-    MISSING=()
-    for pkg in "${ARCH_DEPS[@]}"; do
-        if ! pacman -Qi "$pkg" &>/dev/null; then
-            MISSING+=("$pkg")
-        fi
-    done
+# Determine the distro family. Some systems (e.g. Fedora with the Arch
+# pacman package installed) have *both* dnf and pacman on PATH, so we cannot
+# rely on `command -v pacman` alone. Prefer /etc/os-release, which reliably
+# identifies the actual distribution, and only fall back to binary probing.
+DISTRO_FAMILY=""
+if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case " ${ID:-} ${ID_LIKE:-} " in
+        *" fedora "*|*" rhel "*|*" centos "*) DISTRO_FAMILY="fedora" ;;
+        *" arch "*)                           DISTRO_FAMILY="arch"   ;;
+    esac
+fi
 
-    if [[ ${#MISSING[@]} -gt 0 ]]; then
-        echo "==> Installing missing build dependencies: ${MISSING[*]}"
-        sudo pacman -S --needed --noconfirm "${MISSING[@]}"
-    else
-        echo "==> All build dependencies already installed."
+# Fall back to detecting the package manager binary if os-release was
+# inconclusive.
+if [[ -z "$DISTRO_FAMILY" ]]; then
+    if command -v dnf &>/dev/null; then
+        DISTRO_FAMILY="fedora"
+    elif command -v pacman &>/dev/null; then
+        DISTRO_FAMILY="arch"
     fi
-elif command -v dnf &>/dev/null; then
+fi
+
+if [[ "$DISTRO_FAMILY" == "fedora" ]]; then
     MISSING=()
     for pkg in "${FEDORA_DEPS[@]}"; do
         if ! rpm -q "$pkg" &>/dev/null; then
@@ -96,8 +106,22 @@ elif command -v dnf &>/dev/null; then
     else
         echo "==> All build dependencies already installed."
     fi
+elif [[ "$DISTRO_FAMILY" == "arch" ]]; then
+    MISSING=()
+    for pkg in "${ARCH_DEPS[@]}"; do
+        if ! pacman -Qi "$pkg" &>/dev/null; then
+            MISSING+=("$pkg")
+        fi
+    done
+
+    if [[ ${#MISSING[@]} -gt 0 ]]; then
+        echo "==> Installing missing build dependencies: ${MISSING[*]}"
+        sudo pacman -S --needed --noconfirm "${MISSING[@]}"
+    else
+        echo "==> All build dependencies already installed."
+    fi
 else
-    echo "==> Neither pacman nor dnf found; assuming build dependencies are already installed."
+    echo "==> Could not identify distro (no fedora/arch match); assuming build dependencies are already installed."
 fi
 
 # ---------------------------------------------------------------------------
