@@ -18,12 +18,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 UPSTREAM_REPO="https://invent.kde.org/plasma/plasma-desktop"
 
+# Determine the distro family. Some systems (e.g. Fedora with the Arch
+# pacman package installed) have *both* dnf and pacman on PATH, so we cannot
+# rely on `command -v pacman` alone. Prefer /etc/os-release, which reliably
+# identifies the actual distribution, and only fall back to binary probing.
+DISTRO_FAMILY=""
+if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case " ${ID:-} ${ID_LIKE:-} " in
+        *" fedora "*|*" rhel "*|*" centos "*) DISTRO_FAMILY="fedora" ;;
+        *" arch "*)                           DISTRO_FAMILY="arch"   ;;
+    esac
+fi
+
+# Fall back to detecting the package manager binary if os-release was
+# inconclusive.
+if [[ -z "$DISTRO_FAMILY" ]]; then
+    if command -v dnf &>/dev/null; then
+        DISTRO_FAMILY="fedora"
+    elif command -v pacman &>/dev/null; then
+        DISTRO_FAMILY="arch"
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # Arch: delegate to the makepkg pipeline (tracked package in the qt6-overlay
 # plugin root). A ~/.local copy from this script's raw path would come first
 # on QT_PLUGIN_PATH and shadow the package, so remove it.
 # ---------------------------------------------------------------------------
-if command -v pacman &>/dev/null; then
+if [[ "$DISTRO_FAMILY" == "arch" ]]; then
     for stale in "$HOME"/.local/lib{,64}/qt6/plugins/plasma/applets/org.kde.plasma.taskmanager.so; do
         if [[ -e "$stale" ]]; then
             echo "==> Removing shadowing local build: $stale"
@@ -76,7 +100,7 @@ FEDORA_DEPS=(
     qt6-qtdeclarative-devel
 )
 
-if command -v dnf &>/dev/null; then
+if [[ "$DISTRO_FAMILY" == "fedora" ]]; then
     MISSING=()
     for pkg in "${FEDORA_DEPS[@]}"; do
         if ! rpm -q "$pkg" &>/dev/null; then
@@ -91,7 +115,7 @@ if command -v dnf &>/dev/null; then
         echo "==> All build dependencies already installed."
     fi
 else
-    echo "==> Neither pacman nor dnf found; assuming build dependencies are already installed."
+    echo "==> Could not identify distro (no fedora/arch match); assuming build dependencies are already installed."
 fi
 
 # ---------------------------------------------------------------------------
