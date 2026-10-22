@@ -4,8 +4,9 @@
 # Builds a modified plasma-desktop taskmanager applet that renders pinned
 # launchers as full-height square icons on multi-row horizontal panels,
 # and installs it to ~/.local so it takes precedence over the system copy.
+# On Arch it delegates to pkg/update.sh (tracked makepkg package) instead.
 #
-# Tested on: Fedora 42 / Arches Linux, plasma-desktop 6.7.0
+# Builds against the INSTALLED plasma-desktop version.
 #
 # Usage:
 #   ./build-and-install.sh          # build + install + print restart instructions
@@ -15,9 +16,33 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
-UPSTREAM_TAG="v6.7.0"
 UPSTREAM_REPO="https://invent.kde.org/plasma/plasma-desktop"
-UPSTREAM_CLONE="/tmp/plasma-desktop-upstream-src"
+
+# ---------------------------------------------------------------------------
+# Arch: delegate to the makepkg pipeline (tracked package in the qt6-overlay
+# plugin root). A ~/.local copy from this script's raw path would come first
+# on QT_PLUGIN_PATH and shadow the package, so remove it.
+# ---------------------------------------------------------------------------
+if command -v pacman &>/dev/null; then
+    for stale in "$HOME"/.local/lib{,64}/qt6/plugins/plasma/applets/org.kde.plasma.taskmanager.so; do
+        if [[ -e "$stale" ]]; then
+            echo "==> Removing shadowing local build: $stale"
+            rm -f "$stale"
+        fi
+    done
+    update_args=()
+    [[ "${1:-}" == "--clean" ]] && update_args+=(--force)
+    exec "$SCRIPT_DIR/pkg/update.sh" "${update_args[@]}"
+fi
+
+# The applet must match the running Plasma ABI: build the installed version.
+PLASMA_VER="$(rpm -q --qf '%{VERSION}' plasma-desktop 2>/dev/null)" || {
+    echo "!! plasma-desktop not installed; cannot determine target version" >&2
+    exit 1
+}
+UPSTREAM_TAG="v$PLASMA_VER"
+UPSTREAM_CLONE="/tmp/plasma-desktop-upstream-src-$PLASMA_VER"
+echo "==> Target plasma-desktop version: $PLASMA_VER"
 
 # ---------------------------------------------------------------------------
 # 0. Optional --clean
@@ -51,42 +76,7 @@ FEDORA_DEPS=(
     qt6-qtdeclarative-devel
 )
 
-ARCH_DEPS=(
-    cmake ninja gcc
-    extra-cmake-modules
-    kconfig
-    kglobalaccel
-    ki18n
-    kio
-    knotifications
-    kservice
-    kwindowsystem
-    kxmlgui
-    plasma-activities
-    plasma-activities-stats
-    libplasma
-    plasma-workspace
-    kitemmodels
-    libksysguard
-    qt6-base
-    qt6-declarative
-)
-
-if command -v pacman &>/dev/null; then
-    MISSING=()
-    for pkg in "${ARCH_DEPS[@]}"; do
-        if ! pacman -Qi "$pkg" &>/dev/null; then
-            MISSING+=("$pkg")
-        fi
-    done
-
-    if [[ ${#MISSING[@]} -gt 0 ]]; then
-        echo "==> Installing missing build dependencies: ${MISSING[*]}"
-        sudo pacman -S --needed --noconfirm "${MISSING[@]}"
-    else
-        echo "==> All build dependencies already installed."
-    fi
-elif command -v dnf &>/dev/null; then
+if command -v dnf &>/dev/null; then
     MISSING=()
     for pkg in "${FEDORA_DEPS[@]}"; do
         if ! rpm -q "$pkg" &>/dev/null; then
