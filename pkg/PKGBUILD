@@ -8,7 +8,7 @@
 # QT_PLUGIN_PATH precedence WITHOUT file-conflicting with plasma-desktop.
 
 pkgname=arches-taskmanager-patched
-pkgver=6.7.0
+pkgver=6.8.1
 _dirver=$(echo $pkgver | cut -d. -f1-3)
 pkgrel=1
 pkgdesc='Patched KDE Task Manager — full-height launchers on multi-row panels'
@@ -18,11 +18,13 @@ license=(GPL-2.0-or-later)
 depends=(plasma-workspace)
 makedepends=(extra-cmake-modules
              kconfig
+             kglobalaccel
              ki18n
              kio
              knotifications
              kservice
              kwindowsystem
+             kxmlgui
              plasma-activities
              plasma-activities-stats
              libplasma
@@ -35,10 +37,10 @@ source=(https://download.kde.org/stable/plasma/$_dirver/plasma-desktop-$pkgver.t
         fullheight-launchers.patch
         CMakeLists.txt
         qtpath-env.sh)
-sha256sums=('63513b54f6f60b3cd7ec35ca2f0962bdf25669729388e8515ac1d3b8899ee47f'
+sha256sums=('12d2b8e44626f59b9602ee15b2bd847033866e4a414b9f4d8819994b35d8f66f'
             'SKIP'
             '7be99ba6db917e339f944041145f1020f108b6a05a41ec98118b42e23613f476'
-            '94eb9e248f814cc68c7616d9d1d926bf9d53ea5e315efcc6dff81d365d4233bb'
+            '780eb1f7cd621f5d0cf093c2b4d45e00b631d5b064dce29d49ebd7894870ab12'
             'c1b48b6490dc5bfdd40127b5f7b9952f44a3d5ecec70f040426654fe5892de08')
 validpgpkeys=('E0A3EB202F8E57528E13E72FD7574483BB57B18D'  # Jonathan Esk-Riddell <jr@jriddell.org>
               '0AAC775BB6437A8D9AF7A3ACFE0784117FBCE11D'  # Bhushan Shah <bshah@kde.org>

@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(plasma-taskmanager-applet)
 
-set(PROJECT_VERSION "6.7.0")
-set(QT_MIN_VERSION "6.10.0")
-set(KF6_MIN_VERSION "6.22.0")
+set(PROJECT_VERSION "6.8.1")
+set(QT_MIN_VERSION "6.11.0")
+set(KF6_MIN_VERSION "6.30.0")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,11 +22,13 @@ find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS Core Qml Quick)
 
 find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS
     Config
+    GlobalAccel
     I18n
     KIO
     Notifications
     Service
     WindowSystem
+    XmlGui
 )
 
 find_package(Plasma REQUIRED)
@@ -85,11 +87,13 @@ target_link_libraries(org.kde.plasma.taskmanager PRIVATE
     Plasma::Activities
     Plasma::ActivitiesStats
     KF6::ConfigGui
+    KF6::GlobalAccel
     KF6::I18n
     KF6::KIOCore
     KF6::KIOGui
     KF6::KIOFileWidgets
     KF6::Notifications
+    KF6::XmlGui
     Plasma::Plasma
     KSysGuard::ProcessCore
     KF6::Service

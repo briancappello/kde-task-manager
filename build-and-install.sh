@@ -34,11 +34,13 @@ FEDORA_DEPS=(
     cmake ninja-build gcc-c++
     extra-cmake-modules
     kf6-kconfig-devel
+    kf6-kglobalaccel-devel
     kf6-ki18n-devel
     kf6-kio-devel
     kf6-knotifications-devel
     kf6-kservice-devel
     kf6-kwindowsystem-devel
+    kf6-kxmlgui-devel
     plasma-activities-devel
     plasma-activities-stats-devel
     libplasma-devel
@@ -53,11 +55,13 @@ ARCH_DEPS=(
     cmake ninja gcc
     extra-cmake-modules
     kconfig
+    kglobalaccel
     ki18n
     kio
     knotifications
     kservice
     kwindowsystem
+    kxmlgui
     plasma-activities
     plasma-activities-stats
     libplasma
