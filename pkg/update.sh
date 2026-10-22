@@ -53,6 +53,18 @@ if [[ "$installed" == "$TARGET_VER" && "$FORCE" != 1 ]]; then
   exit 0
 fi
 
+# Reuse an already-built package if present.
+# A previous run may have built cleanly but failed BEFORE installing (classic
+# case: sudo's cached credentials expired at the publish/install step and the
+# prompt timed out). makepkg only emits the final .pkg.tar.zst after a clean
+# build, so its presence means "already built for this version" — skip the
+# rebuild and just re-publish/install it. pkgrel is always pinned to 1 below.
+prebuilt="${PKG}-${TARGET_VER}-1-x86_64.pkg.tar.zst"
+if [[ -f "$prebuilt" && "$FORCE" != 1 ]]; then
+  note "Reusing already-built $prebuilt (previous run built but didn't install) — skipping rebuild. (--force to rebuild)"
+  pkgfile="$prebuilt"
+else
+
 # Point the PKGBUILD at the target version.
 sed -i -E "s/^pkgver=.*/pkgver=$TARGET_VER/" PKGBUILD
 sed -i -E "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
@@ -72,6 +84,7 @@ makepkg -Cf
 pkgfile="$(ls -t ${PKG}-*-x86_64.pkg.tar.zst | head -1)"
 [[ -f "$pkgfile" ]] || die "build succeeded but no package file found"
 note "Built: $pkgfile"
+fi  # end reuse-vs-build
 ((BUILD_ONLY)) && { note "--build-only: done."; exit 0; }
 
 note "Publishing to arches-local [sudo]..."
